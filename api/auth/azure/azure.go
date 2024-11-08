@@ -16,10 +16,22 @@ import (
 )
 
 type AzureAuth struct {
-	roleName  string
-	mountPath string
-	resource  string
+	roleName          string
+	mountPath         string
+	resource          string
+	managedIdentityID struct {
+		id     string
+		idType managedIdentityIDType
+	}
 }
+
+type managedIdentityIDType string
+
+const (
+	ObjectID managedIdentityIDType = "object_id"
+	ClientID managedIdentityIDType = "client_id"
+	MsiResID managedIdentityIDType = "msi_res_id"
+)
 
 var _ api.AuthMethod = (*AzureAuth)(nil)
 
@@ -146,6 +158,14 @@ func WithResource(url string) LoginOption {
 	}
 }
 
+func WithManagedIdentityId(id string, idType managedIdentityIDType) LoginOption {
+	return func(a *AzureAuth) error {
+		a.managedIdentityID.id = id
+		a.managedIdentityID.idType = idType
+		return nil
+	}
+}
+
 // Retrieves an access token from Managed Identities for Azure Resources
 //
 // Learn more here: https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/how-to-use-vm-token
@@ -158,6 +178,9 @@ func (a *AzureAuth) getJWT() (string, error) {
 	identityParameters := identityEndpoint.Query()
 	identityParameters.Add(apiVersionQueryParam, metadataAPIVersion)
 	identityParameters.Add(resourceQueryParam, a.resource)
+	if a.managedIdentityID.id != "" && a.managedIdentityID.idType != "" {
+		identityParameters.Add(string(a.managedIdentityID.idType), a.managedIdentityID.id)
+	}
 	identityEndpoint.RawQuery = identityParameters.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, identityEndpoint.String(), nil)
